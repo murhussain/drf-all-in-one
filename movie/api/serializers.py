@@ -6,9 +6,17 @@ from movie.models import Movie
 
 
 class MovieSerializer(serializers.ModelSerializer):
+    len_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Movie
         fields = "__all__"
+        # fields = ['id', 'name', 'description']
+        # exclude = ['active']
+
+    # Get the length of the name in the serializer out put
+    def get_len_name(self, object):
+        return len(object.name)
 
     # Object-level validation
     def Validate(self, data):
