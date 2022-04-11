@@ -10,14 +10,6 @@ from movie.api.serializers import (WatchListSerializer, StreamPlatformSerializer
 
 class StreamPlatformViewset(viewsets.ViewSet):
 
-    def post(self, request):
-        serializer = StreamPlatformSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors)
-
     def list(self, request):
         queryset = StreamPlatform.objects.all()
         serializer = StreamPlatformSerializer(queryset, many=True)
