@@ -1,9 +1,12 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import status, generics
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import viewsets
+
+from movie.api.permissions import AdminOrReadOnly, ReviewUserOrReadOnly
 from movie.models import WatchList, StreamPlatform, Review
 from movie.api.serializers import (WatchListSerializer, StreamPlatformSerializer,
                                    ReviewSerializer)
@@ -28,13 +31,22 @@ class CreateReview(generics.CreateAPIView):
         review_queryset = Review.objects.filter(watchlist=movie, review_user=user)
 
         if review_queryset.exists():
-            raise ValidationError("You've already reviewed thi movie")
+            raise ValidationError("You've already reviewed this movie")
+
+        if movie.number_rating == 0:
+            movie.avg_rating = serializer.validated_data['rating']
+        else:
+            movie.avg_rating = (movie.avg_rating + serializer.validated_data['rating'])/2
+
+        movie.number_rating += 1
+        movie.save()
 
         serializer.save(watchlist=movie, review_user=user)
 
 
 class ReviewList(generics.ListAPIView):
     serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         pk = self.kwargs['pk']
@@ -42,6 +54,8 @@ class ReviewList(generics.ListAPIView):
 
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
+    # permission_classes = [AdminOrReadOnly]
+    permission_classes = [ReviewUserOrReadOnly]
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
 
