@@ -1,24 +1,105 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import status, generics
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, generics, filters
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import viewsets
 
-from movie.api.permissions import AdminOrReadOnly, ReviewUserOrReadOnly
+from movie.api.pagination import WatchlistPagination, WatchlistCursorPagination
+from movie.api.permissions import IsAdminOrReadOnly, IsReviewUserOrReadOnly
 from movie.models import WatchList, StreamPlatform, Review
 from movie.api.serializers import (WatchListSerializer, StreamPlatformSerializer,
                                    ReviewSerializer)
+from movie.api.throttling import ReviewCreateThrottle, ReviewListThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
+
+# Much more about filtering, Search and Ordering
+
+"""Here we are overriding get_queryset() function, 
+they need to create a form and user a post request to get all 
+reviews associated to a particular user. Simply
+This called 'FILTERING AGAINST URL' """
 
 
+class UserReview(generics.ListAPIView):
+    serializer_class = ReviewSerializer
+
+    def get_queryset(self):
+        username = self.kwargs['username']
+        return Review.objects.filter(review_user__username=username)
+
+
+"""Here we are passing parameter in the URL to get all 
+reviews associated to a particular user. Simply
+This called 'FILTERING AGAINST PASSING PARAMETER' """
+
+
+class UserReview2(generics.ListAPIView):
+    serializer_class = ReviewSerializer
+
+    def get_queryset(self):
+        username = self.request.query_params.get('username', None)
+        return Review.objects.filter(review_user__username=username)
+
+
+"""Here we are passing parameter in the URL to FILTER 
+movies associated to a particular title or platform__name. Simply
+This called 'FILTERING AGAINST FILTER_BACKENDS' """
+
+
+class WatchListListAPIView(generics.ListAPIView):
+    serializer_class = WatchListSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['title', 'platform__name']
+
+    def get_queryset(self):
+        return WatchList.objects.all()
+
+
+"""Here we are passing parameter in the URL to SEARCH 
+movies associated to a particular title or platform__name. Simply
+This called 'FILTERING AGAINST SEARCH_FILTER' """
+
+
+class WatchSearchListAPIView(generics.ListAPIView):
+    serializer_class = WatchListSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['^title', 'platform__name']
+    # pagination_class = WatchlistPagination
+    pagination_class = WatchlistCursorPagination
+
+    def get_queryset(self):
+        return WatchList.objects.all()
+
+
+"""Here we are passing parameter in the URL to ORDERING 
+movies associated to a particular title or platform__name. Simply
+This called 'FILTERING AGAINST ORDERING_FILTER' """
+
+
+class WatchOrderingListAPIView(generics.ListAPIView):
+    serializer_class = WatchListSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['avg_rating']
+    pagination_class = WatchlistPagination
+
+    def get_queryset(self):
+        return WatchList.objects.all()
+
+
+# End of filtering, Search and Ordering
 class StreamPlatformViewset(viewsets.ModelViewSet):
     queryset = StreamPlatform.objects.all()
     serializer_class = StreamPlatformSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 
 class CreateReview(generics.CreateAPIView):
     serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ReviewCreateThrottle]
 
     def get_queryset(self):
         return Review.objects.all()
@@ -36,7 +117,7 @@ class CreateReview(generics.CreateAPIView):
         if movie.number_rating == 0:
             movie.avg_rating = serializer.validated_data['rating']
         else:
-            movie.avg_rating = (movie.avg_rating + serializer.validated_data['rating'])/2
+            movie.avg_rating = (movie.avg_rating + serializer.validated_data['rating']) / 2
 
         movie.number_rating += 1
         movie.save()
@@ -46,7 +127,9 @@ class CreateReview(generics.CreateAPIView):
 
 class ReviewList(generics.ListAPIView):
     serializer_class = ReviewSerializer
-    permission_classes = [IsAuthenticated]
+    throttle_classes = [ReviewListThrottle, AnonRateThrottle]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['review_user__username', 'active']
 
     def get_queryset(self):
         pk = self.kwargs['pk']
@@ -54,13 +137,16 @@ class ReviewList(generics.ListAPIView):
 
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
-    # permission_classes = [AdminOrReadOnly]
-    permission_classes = [ReviewUserOrReadOnly]
+    permission_classes = [IsReviewUserOrReadOnly]
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
+    # Defining throttle inside view without creating a separate file
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'review-detail'
 
 
 class StreamPlatformAPIView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request):
         platform = StreamPlatform.objects.all()
@@ -77,6 +163,8 @@ class StreamPlatformAPIView(APIView):
 
 
 class StreamPlatformDetailAPIView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
+
     def get(self, request, pk):
         try:
             platform = StreamPlatform.objects.get(pk=pk)
@@ -102,6 +190,7 @@ class StreamPlatformDetailAPIView(APIView):
 
 
 class WatchListAPIView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request):
         movies = WatchList.objects.all()
@@ -118,6 +207,8 @@ class WatchListAPIView(APIView):
 
 
 class WatchDetailAPIView(APIView):
+    permission_classes = [IsAdminOrReadOnly]
+
     def get(self, request, pk):
         try:
             movie = WatchList.objects.get(pk=pk)

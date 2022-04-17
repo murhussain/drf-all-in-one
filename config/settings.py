@@ -23,9 +23,10 @@ INSTALLED_APPS = [
 
     # thrid parties
     'rest_framework',
+    'django_filters',
 
     # Authentication
-    'rest_framework.authtoken'
+    'rest_framework.authtoken',
 
 ]
 
@@ -96,5 +97,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '2/day',
+        # 'user': '3/day', Overridden by the below scopes
+        'review-create': '1/day',
+        'review-list': '10/day',
+        'review-detail': '10/day',
+    },
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer'
     ]
 }
